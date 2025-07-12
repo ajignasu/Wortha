@@ -22,13 +22,20 @@
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
     --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    /* Apple-style accents */
+    --accent: #0a84ff;
+    --bg-translucent: rgba(255,255,255,0.15);
+    --border-glass: 1px solid rgba(255,255,255,0.35);
+    --shadow-glass: 0 4px 12px rgba(0,0,0,0.12);
+    /* map legacy primary to accent */
+    --primary-color: var(--accent);
 }
 
 body {
     /* subtle hue breathing effect */
-    animation: hueShift 120s linear infinite;
+    animation: hueShift 300s linear infinite;
     /* animated gradient instead of global hue filter */
-    background: linear-gradient(to bottom, hsl(var(--h) 100% 98%), hsl(calc(var(--h) + 20deg) 100% 94%));
+    background: #ffffff;
 
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     color: var(--text-primary);
@@ -94,13 +101,13 @@ h1 {
 
 /* Upload Section */
 .upload-section {
-    backdrop-filter: blur(18px) saturate(160%);
-    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
     background: rgba(255, 255, 255, 0.12);
     border: 1px solid rgba(255, 255, 255, 0.2);
 
     background: var(--bg-primary);
-    border-radius: 16px;
+    border-radius: 20px;
     padding: 2rem;
     box-shadow: var(--shadow-md); /* retain depth */
     margin-bottom: 2rem;
@@ -117,12 +124,12 @@ h1 {
 }
 
 .upload-area:hover {
-    border-color: var(--primary-color);
+    border-color: var(--accent);
     background: rgba(80, 70, 229, 0.05);
 }
 
 .upload-area.drag-over {
-    border-color: var(--primary-color);
+    border-color: var(--accent);
     background: rgba(80, 70, 229, 0.1);
     transform: scale(1.02);
 }
@@ -163,7 +170,7 @@ h1 {
 .file-icon {
     width: 20px;
     height: 20px;
-    color: var(--primary-color);
+    color: var(--accent);
 }
 
 .remove-file {
@@ -199,10 +206,11 @@ h1 {
   color: var(--text-primary);
 }
 .obj-tab.active {
-  color: var(--primary-color);
+  color: var(--accent);
   font-weight: 600;
 }
 .obj-tab.active::after {
+    background: var(--accent);
   content: '';
   position: absolute;
   left: 0;
@@ -298,7 +306,7 @@ h1 {
     width: 100%;
     margin-top: 1.5rem;
     padding: 1rem 2rem;
-    background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+    background: var(--accent);
     color: white;
     border: none;
     border-radius: 8px;
@@ -330,13 +338,13 @@ h1 {
 
 /* Progress Section */
 .progress-section {
-    backdrop-filter: blur(18px) saturate(160%);
-    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
     background: rgba(255, 255, 255, 0.12);
     border: 1px solid rgba(255, 255, 255, 0.2);
 
     background: var(--bg-primary);
-    border-radius: 16px;
+    border-radius: 20px;
     padding: 2rem;
     box-shadow: var(--shadow-md); /* retain depth */
     margin-bottom: 2rem;
@@ -408,7 +416,7 @@ h1 {
 
 .image-column {
     background: var(--bg-primary);
-    border-radius: 16px;
+    border-radius: 20px;
     padding: 1.5rem;
     box-shadow: var(--shadow-md); /* retain depth */
     transition: transform 0.3s ease;
@@ -461,13 +469,13 @@ h1 {
 
 /* Results Container */
 .results-container {
-    backdrop-filter: blur(18px) saturate(160%);
-    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
     background: rgba(255, 255, 255, 0.12);
     border: 1px solid rgba(255, 255, 255, 0.2);
 
     background: var(--bg-primary);
-    border-radius: 16px;
+    border-radius: 20px;
     padding: 2rem;
     box-shadow: var(--shadow-md); /* retain depth */
 }
@@ -613,10 +621,11 @@ tbody tr:hover {
 }
 
 .tab-button.active {
-    color: var(--primary-color);
+    color: var(--accent);
 }
 
 .tab-button.active::after {
+    background: var(--accent);
     content: '';
     position: absolute;
     bottom: -2px;

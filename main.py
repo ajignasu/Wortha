@@ -12,6 +12,37 @@ import json
 import colorsys
 from typing import List, Dict
 
+# ---------------------------------------------------------------------------
+# Lightweight heuristics: mapping of object label -> extra default parts
+# ---------------------------------------------------------------------------
+COMMON_PARTS_MAP = {
+    "table": [
+        {"part": "wood screws", "material": "steel", "cost": 0.1},
+        {"part": "wood glue", "material": "PVA adhesive", "cost": 0.5}
+    ],
+    "chair": [
+        {"part": "wood screws", "material": "steel", "cost": 0.08},
+        {"part": "felt floor glides", "material": "felt", "cost": 0.2}
+    ],
+    "laptop": [
+        {"part": "assembly screws", "material": "steel", "cost": 0.05},
+        {"part": "thermal paste", "material": "silicone", "cost": 0.3}
+    ]
+}
+
+def inject_common_parts(objects: List[Dict]) -> None:
+    """Mutate objects list in-place, appending common parts if missing."""
+    for obj in objects:
+        label = obj.get("label", "").lower()
+        defaults = COMMON_PARTS_MAP.get(label)
+        if not defaults:
+            continue
+        existing_parts = {p.get("part", "").lower() for p in obj.get("parts", [])}
+        for d in defaults:
+            if d["part"].lower() not in existing_parts:
+                obj.setdefault("parts", []).append(d.copy())
+
+
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
@@ -135,6 +166,8 @@ async def get_bom_from_image(image_bytes: bytes, filename: str, use_real_prices:
     text = response.text.strip().replace("```json", "").replace("```", "")
     try:
         objects = json.loads(text)
+        # Inject heuristic common parts
+        inject_common_parts(objects)
     except Exception:
         return {"error": "Failed to parse response", "raw_response": text}
 
