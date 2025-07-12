@@ -102,8 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function uploadImage() {
         const fileInput = document.getElementById("imageUpload");
         const file = fileInput.files[0];
-        if (!file) return;
-    
+        if (!file) { alert('Please select an image file.'); return; }    
         uploadedFile = file;  // store for preview
     
         const formData = new FormData();
