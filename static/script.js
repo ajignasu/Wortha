@@ -198,7 +198,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="object-name">${objectName}</span>
                         <button class="obj-tab price-tab active" data-label="${objectName}">Price Breakdown</button>
                         <button class="obj-tab instr-tab" data-label="${objectName}">Manufacturing Instructions</button>
-                    </div>
                         <span class="object-total">${objectData.total.toFixed(2)}</span>
                     </div>
                     <div class="price-content">
@@ -227,7 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </tbody>
                     </table>
                     </div>
-                    <div class="instr-content" id="instr-${objectName.replace(/\s+/g,'-')}"><em>Click "Manufacturing Instructions" to load.</em></div>
+                    <div class="instr-content" id="instr-${objectName.replace(/\s+/g,'-')}"><em>Click \"Manufacturing Instructions\" to load.</em></div>
                 </div>
             `;
         });
@@ -308,6 +307,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 btn.previousElementSibling.classList.remove('active');
                 priceDiv.style.display = 'none';
                 contentDiv.style.display = 'block';
+                // if already loaded, just show cached content
+                if (contentDiv.dataset.loaded) {
+                    priceDiv.style.display = 'none';
+                    contentDiv.style.display = 'block';
+                    return;
+                }
                 contentDiv.innerHTML = '<em>Generating instructions...</em>';
                 try {
                     const resp = await fetch('/api/instructions', {
@@ -319,28 +324,77 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (data.instructions) {
                         // naive markdown to HTML: convert line breaks
                         contentDiv.innerHTML = marked.parse(data.instructions);
+                        contentDiv.dataset.loaded = 'true';
                     } else {
                         contentDiv.textContent = data.detail || 'Failed to get instructions';
                     }
                 } catch (err) {
                     contentDiv.textContent = err.message || 'Error generating instructions';
+                    contentDiv.dataset.loaded = 'true';
                 }
             });
         });
     }
 
     // Attach price tab handlers
+        // Delegated handler to cover dynamically modified DOM and ensure consistent switching
+        resultsContainer.addEventListener('click', e => {
+            const tabBtn = e.target.closest('.obj-tab');
+            if (!tabBtn) return;
+            const group = tabBtn.closest('.object-group');
+            if (!group) return;
+            const priceDiv = group.querySelector('.price-content');
+            const instrDiv = group.querySelector('.instr-content');
+            const isPrice = tabBtn.classList.contains('price-tab');
+            const priceBtn = group.querySelector('.price-tab');
+            const instrBtn = group.querySelector('.instr-tab');
+            if (isPrice) {
+                // activate price view
+                priceBtn.classList.add('active');
+                instrBtn.classList.remove('active');
+                priceDiv.style.display = 'block';
+                instrDiv.style.display = 'none';
+            } else {
+                // manufacturing instructions tab
+                instrBtn.classList.add('active');
+                priceBtn.classList.remove('active');
+                priceDiv.style.display = 'none';
+                instrDiv.style.display = 'block';
+                if (!instrDiv.dataset.loaded) {
+                    instrDiv.innerHTML = '<em>Generating instructions...</em>';
+                    const obj = objects.find(o => o.label === tabBtn.dataset.label);
+                    if (obj) {
+                        fetch('/api/instructions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ label: obj.label, parts: obj.parts })
+                        }).then(r=>r.json()).then(data=>{
+                            if (data.instructions) {
+                                instrDiv.innerHTML = marked.parse(data.instructions);
+                            } else {
+                                instrDiv.textContent = data.detail || 'Failed to get instructions';
+                            }
+                            instrDiv.dataset.loaded = 'true';
+                        }).catch(err=>{
+                            instrDiv.textContent = err.message || 'Error generating instructions';
+                            instrDiv.dataset.loaded = 'true';
+                        });
+                    }
+                }
+            }
+        });
+
+        // Legacy individual listeners (kept for safety but can be removed later)
         document.querySelectorAll('.obj-tab.price-tab').forEach(btn=>{
             btn.addEventListener('click',()=>{
-                const label=btn.dataset.label;
-                const instrTab=btn.nextElementSibling;
-                const group=btn.closest('.object-group');
-                const priceDiv=group.querySelector('.price-content');
-                const instrDiv=group.querySelector('.instr-content');
+                const group = btn.closest('.object-group');
+                const priceDiv = group.querySelector('.price-content');
+                const instrDiv = group.querySelector('.instr-content');
+                const instrTab = group.querySelector('.instr-tab');
                 btn.classList.add('active');
-                instrTab.classList.remove('active');
-                priceDiv.style.display='block';
-                instrDiv.style.display='none';
+                if (instrTab) instrTab.classList.remove('active');
+                priceDiv.style.display = 'block';
+                instrDiv.style.display = 'none';
             });
         });
 

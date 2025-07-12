@@ -5,6 +5,9 @@
 }
 
 :root {
+    /* animated hue variable */
+    --h: 0deg;
+
     --primary-color: #5046e5;
     --primary-hover: #4338ca;
     --secondary-color: #06b6d4;
@@ -22,8 +25,12 @@
 }
 
 body {
+    /* subtle hue breathing effect */
+    animation: hueShift 120s linear infinite;
+    /* animated gradient instead of global hue filter */
+    background: linear-gradient(to bottom, hsl(var(--h) 100% 98%), hsl(calc(var(--h) + 20deg) 100% 94%));
+
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    background: linear-gradient(to bottom, #f9fafb, #f3f4f6);
     color: var(--text-primary);
     line-height: 1.6;
     min-height: 100vh;
@@ -34,6 +41,14 @@ body {
     margin: 0 auto;
     padding: 2rem;
 }
+
+/* Animated gradient property */
+@property --h {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes hueShift { to { --h: 360deg; } }
 
 /* Header */
 .app-header {
@@ -79,10 +94,15 @@ h1 {
 
 /* Upload Section */
 .upload-section {
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+
     background: var(--bg-primary);
     border-radius: 16px;
     padding: 2rem;
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-md); /* retain depth */
     margin-bottom: 2rem;
 }
 
@@ -290,7 +310,7 @@ h1 {
     align-items: center;
     justify-content: center;
     gap: 0.75rem;
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-md); /* retain depth */
 }
 
 .analyze-button:hover:not(:disabled) {
@@ -310,10 +330,15 @@ h1 {
 
 /* Progress Section */
 .progress-section {
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+
     background: var(--bg-primary);
     border-radius: 16px;
     padding: 2rem;
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-md); /* retain depth */
     margin-bottom: 2rem;
 }
 
@@ -385,7 +410,7 @@ h1 {
     background: var(--bg-primary);
     border-radius: 16px;
     padding: 1.5rem;
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-md); /* retain depth */
     transition: transform 0.3s ease;
     display: flex;
     flex-direction: column;
@@ -436,10 +461,15 @@ h1 {
 
 /* Results Container */
 .results-container {
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+
     background: var(--bg-primary);
     border-radius: 16px;
     padding: 2rem;
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-md); /* retain depth */
 }
 
 .results-container h2 {
