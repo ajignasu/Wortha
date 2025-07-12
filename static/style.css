@@ -48,6 +48,11 @@ button:hover {
     display: none;
 }
 
+.preview-img.rotated {
+    transform: rotate(90deg);
+    transform-origin: center;
+}
+
 #spinner {
     border: 4px solid rgba(0, 0, 0, 0.1);
     width: 36px;
@@ -80,4 +85,28 @@ th, td {
 
 th {
     background-color: #f2f2f2;
+}
+
+.image-grid {
+    display: flex;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.image-column {
+    flex: 1;
+    text-align: center;
+}
+
+.preview-img {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    transition: transform 0.2s;
+}
+
+.preview-img:hover {
+    transform: scale(1.02);
 }
