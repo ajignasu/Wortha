@@ -2,11 +2,13 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import io
 import os
 from google import genai
 from dotenv import load_dotenv
+import json
+import colorsys
 
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -21,58 +23,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-import json
-
-# def get_bom_from_image(image_bytes: bytes, filename: str):
-#     prompt = (
-#         "You are a mechanical reasoning and cost estimation assistant. Analyze this image.\n"
-#         "Step 1: List all distinct physical objects in the image.\n"
-#         "Step 2: For each object, list its parts.\n"
-#         "Step 3: For each part, estimate the likely material and cost in USD.\n"
-#         "Respond ONLY in JSON format like:\n"
-#         "{\n"
-#         "  \"ObjectName\": [\n"
-#         "    {\"part\": \"PartName\", \"material\": \"Material\", \"cost\": number}\n"
-#         "  ]\n"
-#         "}"
-#     )
-
-#     # Convert to PIL image
-#     image = Image.open(io.BytesIO(image_bytes))
-
-#     # Send directly to Gemini
-#     response = client.models.generate_content(
-#         model="gemini-2.5-flash",  # or gemini-pro-vision
-#         contents=[prompt, image],
-#     )
-
-#     # Clean + parse output
-#     text = response.text.strip().replace("```json", "").replace("```", "")
-#     try:
-#         bom_dict = json.loads(text)
-#     except json.JSONDecodeError:
-#         return {"error": "Failed to parse BOM from model response", "raw_response": text}
-
-#     bom = []
-#     total_cost = 0
-#     for obj, parts in bom_dict.items():
-#         for item in parts:
-#             part = item.get("part")
-#             material = item.get("material")
-#             cost = float(item.get("cost", 0))
-#             bom.append({
-#                 "object": obj,
-#                 "part": part,
-#                 "material": material,
-#                 "cost": round(cost, 2)
-#             })
-#             total_cost += cost
-
-#     return {"bom": bom, "total_cost": round(total_cost, 2)}
+def get_distinct_colors(n):
+    """Generate n distinct colors using HSV color space"""
+    colors = []
+    for i in range(n):
+        hue = i / n
+        # Use high saturation and value for vibrant colors
+        rgb = colorsys.hsv_to_rgb(hue, 0.9, 0.9)
+        colors.append(tuple(int(c * 255) for c in rgb))
+    return colors
 
 def get_bom_from_image(image_bytes: bytes, filename: str):
-    from PIL import ImageDraw, ImageFont
-
     image = Image.open(io.BytesIO(image_bytes))
     image.thumbnail([1024, 1024], Image.Resampling.LANCZOS)
 
@@ -90,7 +51,7 @@ def get_bom_from_image(image_bytes: bytes, filename: str):
     )
 
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-2.0-flash-exp",
         contents=[prompt, image],
     )
 
@@ -100,25 +61,46 @@ def get_bom_from_image(image_bytes: bytes, filename: str):
     except Exception:
         return {"error": "Failed to parse response", "raw_response": text}
 
-    draw = ImageDraw.Draw(image)
-    font = ImageFont.load_default()
+    # Generate distinct colors for each object
+    colors = get_distinct_colors(len(objects))
+    
+    # Create a copy for drawing
+    overlay_image = image.copy()
+    draw = ImageDraw.Draw(overlay_image)
+    
+    # Try to use a better font, fallback to default
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
+    except:
+        font = ImageFont.load_default()
 
     total_cost = 0
     bom = []
+    color_map = {}
 
-    for obj in objects:
+    for idx, obj in enumerate(objects):
         label = obj["label"]
         box = obj.get("box_2d")
         parts = obj.get("parts", [])
+        color = colors[idx]
+        color_map[label] = f"rgb({color[0]}, {color[1]}, {color[2]})"
 
-        # Draw bounding box
+        # Draw bounding box with unique color
         if box and len(box) == 4:
             y0 = int(box[0] * image.size[1])
             x0 = int(box[1] * image.size[0])
             y1 = int(box[2] * image.size[1])
             x1 = int(box[3] * image.size[0])
-            draw.rectangle([x0, y0, x1, y1], outline="red", width=3)
-            draw.text((x0, y0 - 10), label, fill="white", font=font)
+            
+            # Draw thicker box for better visibility
+            for i in range(3):
+                draw.rectangle([x0-i, y0-i, x1+i, y1+i], outline=color, width=2)
+            
+            # Draw label background
+            text_bbox = draw.textbbox((x0, y0 - 25), label, font=font)
+            draw.rectangle([text_bbox[0]-5, text_bbox[1]-2, text_bbox[2]+5, text_bbox[3]+2], 
+                          fill=color)
+            draw.text((x0, y0 - 25), label, fill="white", font=font)
 
         # Add parts to BOM
         for part in parts:
@@ -126,22 +108,23 @@ def get_bom_from_image(image_bytes: bytes, filename: str):
                 "object": label,
                 "part": part.get("part"),
                 "material": part.get("material"),
-                "cost": round(float(part.get("cost", 0)), 2)
+                "cost": round(float(part.get("cost", 0)), 2),
+                "color": color_map[label]
             })
             total_cost += float(part.get("cost", 0))
 
-    # Save overlay image
+    # Save overlay image - rotate 90 degrees clockwise before saving
     os.makedirs("static/outputs", exist_ok=True)
+    overlay_image_rotated = overlay_image.rotate(-90, expand=True)
     overlay_path = f"static/outputs/{filename.replace(' ', '_')}"
-    image.save(overlay_path)
+    overlay_image_rotated.save(overlay_path, quality=95)
 
     return {
         "bom": bom,
         "total_cost": round(total_cost, 2),
-        "overlay_url": f"/static/outputs/{os.path.basename(overlay_path)}"
+        "overlay_url": f"/static/outputs/{os.path.basename(overlay_path)}",
+        "color_map": color_map
     }
-
-
 
 @app.post("/api/analyze-image")
 async def analyze_image(file: UploadFile = File(...)):
@@ -157,4 +140,3 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 async def read_index():
     return FileResponse('static/index.html')
-
