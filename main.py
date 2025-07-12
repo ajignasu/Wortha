@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Body, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -205,12 +205,23 @@ async def get_bom_from_image(image_bytes: bytes, filename: str, use_real_prices:
     overlay_path = f"static/outputs/{filename.replace(' ', '_')}"
     overlay_image_rotated.save(overlay_path, quality=95)
 
+    # Build objects metadata for frontend selection
+    objects_meta = []
+    for idx, obj in enumerate(objects):
+        objects_meta.append({
+            "label": obj.get("label"),
+            "bbox": obj.get("box_2d"),
+            "color": color_map.get(obj.get("label")),
+            "parts": obj.get("parts", [])
+        })
+
     # Final structured response
     return {
         "bom": all_parts,
         "total_cost": round(total_cost, 2),
         "overlay_url": f"/static/outputs/{os.path.basename(overlay_path)}",
-        "color_map": color_map
+        "color_map": color_map,
+        "objects": objects_meta
     }
 
 @app.post("/api/analyze-image")
@@ -223,6 +234,35 @@ async def analyze_image(file: UploadFile = File(...), use_real_prices: bool = Fa
         return {"error": str(e)}
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.post("/api/instructions")
+async def generate_instructions(payload: Dict = Body(...)):
+    """Generate manufacturing instructions for a selected object.
+    Expected payload: {"label": str, "parts": List[{part, material, cost}]}
+    """
+    label = payload.get("label")
+    parts = payload.get("parts", [])
+    if not label or not parts:
+        raise HTTPException(status_code=400, detail="label and parts required")
+
+    # Build BOM description
+    parts_desc = "\n".join([f"- {p['part']} ({p['material']})" for p in parts])
+    prompt = (
+        f"You are an experienced manufacturing engineer. Provide detailed, step-by-step manufacturing "
+        f"instructions for building a {label}. The bill of materials is:\n{parts_desc}\n" 
+        "Cover machining/assembly processes, recommended tolerances, tools, and quality checks. "
+        "Return the instructions as markdown numbered list."
+    )
+    try:
+        resp = client.models.generate_content(
+            model="gemini-1.5-pro-latest",
+            contents=prompt
+        )
+        instructions = resp.text.strip()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {"label": label, "instructions": instructions}
 
 @app.get("/")
 async def read_index():

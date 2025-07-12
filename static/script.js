@@ -146,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function displayResults(data) {
-        const { bom, total_cost, overlay_url, color_map } = data;
+        const { bom, total_cost, overlay_url, color_map, objects } = data;
 
         // Display images
         const originalImageURL = URL.createObjectURL(uploadedFile);
@@ -168,6 +168,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
         `;
+
+        // Add interactive bounding boxes on detected objects image
+        const overlayImg = imagePreviews.querySelector('.image-column:nth-child(2) img');
+        addBoundingBoxes(overlayImg, objects);
 
         // Group BOM by object
         const groupedBOM = {};
@@ -192,8 +196,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="object-header">
                         <span class="object-color-indicator" ${colorStyle}></span>
                         <span class="object-name">${objectName}</span>
+                        <button class="obj-tab price-tab active" data-label="${objectName}">Price Breakdown</button>
+                        <button class="obj-tab instr-tab" data-label="${objectName}">Manufacturing Instructions</button>
+                    </div>
                         <span class="object-total">${objectData.total.toFixed(2)}</span>
                     </div>
+                    <div class="price-content">
                     <table>
                         <thead>
                             <tr>
@@ -218,6 +226,8 @@ document.addEventListener('DOMContentLoaded', () => {
             perObjectHTML += `
                         </tbody>
                     </table>
+                    </div>
+                    <div class="instr-content" id="instr-${objectName.replace(/\s+/g,'-')}"><em>Click "Manufacturing Instructions" to load.</em></div>
                 </div>
             `;
         });
@@ -284,9 +294,57 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         resultsContainer.style.display = 'block';
+
+        // Attach tab handlers for each object
+        document.querySelectorAll('.obj-tab.instr-tab').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const label = btn.dataset.label;
+                const obj = objects.find(o => o.label === label);
+                if (!obj) return;
+                const contentDiv = document.querySelector(`#instr-${label.replace(/\s+/g,'-')}`);
+                const priceDiv = contentDiv.previousElementSibling;
+                // set active states
+                btn.classList.add('active');
+                btn.previousElementSibling.classList.remove('active');
+                priceDiv.style.display = 'none';
+                contentDiv.style.display = 'block';
+                contentDiv.innerHTML = '<em>Generating instructions...</em>';
+                try {
+                    const resp = await fetch('/api/instructions', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ label: obj.label, parts: obj.parts })
+                    });
+                    const data = await resp.json();
+                    if (data.instructions) {
+                        // naive markdown to HTML: convert line breaks
+                        contentDiv.innerHTML = marked.parse(data.instructions);
+                    } else {
+                        contentDiv.textContent = data.detail || 'Failed to get instructions';
+                    }
+                } catch (err) {
+                    contentDiv.textContent = err.message || 'Error generating instructions';
+                }
+            });
+        });
     }
 
-    // Tab switching function
+    // Attach price tab handlers
+        document.querySelectorAll('.obj-tab.price-tab').forEach(btn=>{
+            btn.addEventListener('click',()=>{
+                const label=btn.dataset.label;
+                const instrTab=btn.nextElementSibling;
+                const group=btn.closest('.object-group');
+                const priceDiv=group.querySelector('.price-content');
+                const instrDiv=group.querySelector('.instr-content');
+                btn.classList.add('active');
+                instrTab.classList.remove('active');
+                priceDiv.style.display='block';
+                instrDiv.style.display='none';
+            });
+        });
+
+        // Tab switching function
     window.switchTab = function(tabName) {
         // Update tab buttons
         document.querySelectorAll('.tab-button').forEach(btn => {
@@ -302,4 +360,41 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         document.getElementById(tabName).classList.add('active');
     };
+
+    // Helper to overlay SVG bounding boxes and attach click events
+    function addBoundingBoxes(imgEl, objects) {
+        if (!imgEl) return;
+        if (!imgEl.complete) {
+            imgEl.onload = () => addBoundingBoxes(imgEl, objects);
+            return;
+        }
+        const w = imgEl.naturalWidth;
+        const h = imgEl.naturalHeight;
+        const container = imgEl.parentElement;
+        const prev = container.querySelector('svg.bbox-overlay');
+        if (prev) prev.remove();
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(svgNS, 'svg');
+        svg.setAttribute('class', 'bbox-overlay');
+        svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+        container.appendChild(svg);
+        objects.forEach(obj => {
+            if (!obj.bbox) return;
+            const [y0, x0, y1, x1] = obj.bbox;
+            const rect = document.createElementNS(svgNS, 'rect');
+            rect.setAttribute('x', x0 * w);
+            rect.setAttribute('y', y0 * h);
+            rect.setAttribute('width', (x1 - x0) * w);
+            rect.setAttribute('height', (y1 - y0) * h);
+            rect.setAttribute('stroke', obj.color || '#ff5500');
+            rect.setAttribute('stroke-opacity', '0.9');
+            rect.setAttribute('fill', 'transparent');
+            rect.dataset.label = obj.label;
+            rect.addEventListener('click', () => {
+                const btn = document.querySelector(`.obj-tab.instr-tab[data-label="${obj.label}"]`);
+                if (btn) btn.click();
+            });
+            svg.appendChild(rect);
+        });
+    }
 });

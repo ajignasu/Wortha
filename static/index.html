@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -20,6 +21,10 @@
         </header>
 
         <main class="main-content">
+            <aside id="instructions-panel" class="instructions-panel" style="display:none;">
+                <h3>Manufacturing Instructions</h3>
+                <div id="instructions-content" class="instructions-content"></div>
+            </aside>
             <div class="upload-section">
                 <div class="upload-area" id="upload-area">
                     <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
