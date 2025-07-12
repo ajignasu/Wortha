@@ -77,6 +77,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const formData = new FormData();
         formData.append('file', uploadedFile);
+        
+        // Check if real-time pricing is enabled
+        const useRealPrices = document.getElementById('real-time-pricing').checked;
+        const queryParams = new URLSearchParams({ use_real_prices: useRealPrices });
 
         // Show progress section
         progressSection.style.display = 'block';
@@ -84,19 +88,26 @@ document.addEventListener('DOMContentLoaded', () => {
         imagePreviews.style.display = 'none';
         analyzeBtn.disabled = true;
 
-        // Simulate progress
-        updateProgress(0, 'Uploading image...');
+        // Update progress text based on pricing option
+        const initialText = useRealPrices ? 'Uploading image...' : 'Uploading image...';
+        updateProgress(0, initialText);
         
         try {
             // Start progress animation
             let progress = 0;
             const progressInterval = setInterval(() => {
                 progress += Math.random() * 15;
-                if (progress > 90) progress = 90;
-                updateProgress(progress, 'Analyzing image with AI...');
+                if (progress > 70 && useRealPrices) {
+                    updateProgress(progress, 'Searching for current market prices...');
+                } else if (progress > 90) {
+                    progress = 90;
+                    updateProgress(progress, 'Finalizing results...');
+                } else {
+                    updateProgress(progress, 'Analyzing image with Gemini...');
+                }
             }, 300);
 
-            const response = await fetch('/api/analyze-image', {
+            const response = await fetch(`/api/analyze-image?${queryParams}`, {
                 method: 'POST',
                 body: formData,
             });

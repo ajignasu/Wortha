@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wortha - AI-Powered BOM Generator</title>
+    <title>Wortha - Gemini-Powered BOM Generator</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,7 +16,7 @@
                 <div class="logo">W</div>
                 <h1>Wortha</h1>
             </div>
-            <p class="tagline">AI-Powered Bill of Materials Generator</p>
+            <p class="tagline">Scene to Bill of Materials</p>
         </header>
 
         <main class="main-content">
@@ -50,6 +50,15 @@
                         <path d="m21 21-4.35-4.35"></path>
                     </svg>
                 </button>
+                
+                <div class="pricing-toggle">
+                    <label class="toggle-container">
+                        <input type="checkbox" id="real-time-pricing" />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">Real-time market pricing</span>
+                    </label>
+                    <p class="toggle-hint">Enable to search current market prices (slower but more accurate)</p>
+                </div>
             </div>
 
             <!-- Progress Section -->

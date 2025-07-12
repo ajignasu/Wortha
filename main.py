@@ -6,9 +6,11 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 import os
 from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 import json
 import colorsys
+from typing import List, Dict
 
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -33,7 +35,82 @@ def get_distinct_colors(n):
         colors.append(tuple(int(c * 255) for c in rgb))
     return colors
 
-def get_bom_from_image(image_bytes: bytes, filename: str):
+async def get_real_time_prices(parts_list: List[Dict]) -> List[Dict]:
+    """Get real-time price estimates via batched Gemini Google-Search grounding.
+    We group unique (part, material) combos into batches of up to 5 to stay under
+    the free-tier request quota (~10 rpm).
+    """
+
+    # --- prepare unique lookup keys -------------------------------------------------
+    unique: Dict[str, Dict] = {}
+    for p in parts_list:
+        k = f"{p['part']}|{p['material']}"
+        if k not in unique:
+            # shallow copy keeps refr correctly updated later
+            unique[k] = p
+
+    if not unique:
+        return parts_list
+
+    # Gemini grounding tool
+    grounding_tool = types.Tool(google_search=types.GoogleSearch())
+    gen_cfg = types.GenerateContentConfig(tools=[grounding_tool])
+
+    keys = list(unique.keys())
+    BATCH_SIZE = 5
+
+    for start in range(0, len(keys), BATCH_SIZE):
+        batch_keys = keys[start:start + BATCH_SIZE]
+        # Build a single search query listing all items
+        items_desc = ", ".join([f"{unique[k]['part']} made of {unique[k]['material']}" for k in batch_keys])
+        search_query = f"average market price (USD 2024) of: {items_desc}. Give concise answers."
+
+        try:
+            search_resp = client.models.generate_content(
+                model="gemini-2.5-pro",
+                contents=search_query,
+                config=gen_cfg
+            )
+            # Ask Gemini to turn the search results into JSON mapping
+            format_prompt = (
+                "Return ONLY valid JSON mapping of 'part_material' to price number in USD,"
+                " where 'part_material' is in the form 'part|material'.\n"
+                f"Part_material keys expected: {batch_keys}."
+            )
+            json_resp = client.models.generate_content(
+                model="gemini-2.5-pro",
+                contents=format_prompt + "\n\nSearch results:\n" + search_resp.text
+            )
+            try:
+                price_map = json.loads(json_resp.text.strip().replace('```json','').replace('```',''))
+            except json.JSONDecodeError:
+                price_map = {}
+        except Exception as e:
+            print("Batch price lookup failed:", e)
+            price_map = {}
+
+        # Update the unique dict with any prices we parsed
+        for k in batch_keys:
+            item = unique[k]
+            if k in price_map:
+                try:
+                    item['cost'] = round(float(price_map[k]), 2)
+                    item['price_source'] = 'market_research'
+                except (ValueError, TypeError):
+                    item.setdefault('price_source', 'ai_estimate')
+            else:
+                item.setdefault('price_source', 'ai_estimate')
+
+    # propagate back to original list
+    for p in parts_list:
+        k = f"{p['part']}|{p['material']}"
+        upd = unique.get(k, {})
+        p['cost'] = upd.get('cost', p['cost'])
+        p['price_source'] = upd.get('price_source', p.get('price_source', 'ai_estimate'))
+
+    return parts_list
+
+async def get_bom_from_image(image_bytes: bytes, filename: str, use_real_prices: bool = False):
     image = Image.open(io.BytesIO(image_bytes))
     image.thumbnail([1024, 1024], Image.Resampling.LANCZOS)
 
@@ -102,35 +179,45 @@ def get_bom_from_image(image_bytes: bytes, filename: str):
                           fill=color)
             draw.text((x0, y0 - 25), label, fill="white", font=font)
 
-        # Add parts to BOM
-        for part in parts:
-            bom.append({
+    # Aggregate parts across all detected objects
+    all_parts = []
+    for obj_idx, obj in enumerate(objects):
+        label = obj["label"]
+        for part in obj.get("parts", []):
+            cost = round(float(part.get("cost", 0)), 2)
+            all_parts.append({
                 "object": label,
                 "part": part.get("part"),
                 "material": part.get("material"),
-                "cost": round(float(part.get("cost", 0)), 2),
+                "cost": cost,
                 "color": color_map[label]
             })
-            total_cost += float(part.get("cost", 0))
+            total_cost += cost
 
-    # Save overlay image - rotate 90 degrees clockwise before saving
+    # Optionally fetch real-time prices
+    if use_real_prices:
+        all_parts = await get_real_time_prices(all_parts)
+        total_cost = sum(p["cost"] for p in all_parts)
+
+    # Save overlay image (rotate for portrait images)
     os.makedirs("static/outputs", exist_ok=True)
     overlay_image_rotated = overlay_image.rotate(-90, expand=True)
     overlay_path = f"static/outputs/{filename.replace(' ', '_')}"
     overlay_image_rotated.save(overlay_path, quality=95)
 
+    # Final structured response
     return {
-        "bom": bom,
+        "bom": all_parts,
         "total_cost": round(total_cost, 2),
         "overlay_url": f"/static/outputs/{os.path.basename(overlay_path)}",
         "color_map": color_map
     }
 
 @app.post("/api/analyze-image")
-async def analyze_image(file: UploadFile = File(...)):
+async def analyze_image(file: UploadFile = File(...), use_real_prices: bool = False):
     try:
         image_bytes = await file.read()
-        result = get_bom_from_image(image_bytes, file.filename)
+        result = await get_bom_from_image(image_bytes, file.filename, use_real_prices)
         return result
     except Exception as e:
         return {"error": str(e)}
