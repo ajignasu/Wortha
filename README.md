@@ -1,5 +1,7 @@
 # Wortha – Scene-to-BOM Generator
 
+Built on July 12, 2025 at AGI House Hackathon - Google AI Build Day v4.0.
+
 Turn an image into a structured Bill of Materials, complete with cost, manufacturing instructions, and an interactive scene-graph.
 
 ## Features
