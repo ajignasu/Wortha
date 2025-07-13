@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scene Graph</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0a0a0a;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .scene-graph-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            background: radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0a 70%);
+        }
+
+        #scene-graph {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .graph-content {
+            width: 100%;
+            height: 100%;
+        }
+
+        .node {
+            cursor: pointer;
+            filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.4));
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .node:hover {
+            filter: drop-shadow(0 0 20px rgba(99, 102, 241, 0.8));
+            transform: scale(1.1);
+        }
+
+        .node-circle {
+            fill: #1e1e2e;
+            stroke-width: 3;
+            transition: all 0.3s ease;
+        }
+
+        .object-node .node-circle {
+            stroke: #6366f1;
+            fill: #312e81;
+        }
+
+        .part-node .node-circle {
+            stroke: #06b6d4;
+            fill: #0e7490;
+        }
+
+        .material-node .node-circle {
+            stroke: #10b981;
+            fill: #047857;
+        }
+
+        .node-text {
+            fill: white;
+            text-anchor: middle;
+            dominant-baseline: central;
+            font-size: 12px;
+            font-weight: 600;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .link {
+            fill: none;
+            stroke-width: 2;
+            opacity: 0.6;
+            transition: all 0.3s ease;
+            stroke: #6366f1;
+        }
+
+        .link:hover {
+            opacity: 1;
+            stroke-width: 4;
+            filter: drop-shadow(0 0 10px #6366f1);
+        }
+
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 1000;
+        }
+
+        .tooltip.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .control-btn:active {
+            transform: translateY(0);
+        }
+
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 16px;
+            border-radius: 8px;
+            color: white;
+            font-size: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            gap: 8px;
+        }
+
+        .legend-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .legend-circle {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid;
+            flex-shrink: 0;
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+        }
+
+        .scene-graph-viewer {
+            height: 600px;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #0a0a0a;
+            position: relative;
+        }
+
+        #scene-graph-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+        }
+
+        /* Debug info */
+        .debug-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            font-size: 11px;
+            border-radius: 4px;
+            font-family: monospace;
+            display: none;
+        }
+
+        .debug-info.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="scene-graph-container">
+        <div class="controls">
+            <button class="control-btn" onclick="resetView()">Reset View</button>
+            <button class="control-btn" onclick="fitToScreen()">Fit to Screen</button>
+            <button class="control-btn" onclick="toggleLayout()">Toggle Layout</button>
+            <button class="control-btn" onclick="expandAll()">Expand All</button>
+            <button class="control-btn" onclick="toggleDebug()">Debug Info</button>
+            <button class="control-btn" onclick="loadSampleData()">Load Sample</button>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-circle" style="border-color: #6366f1; background: #312e81;"></div>
+                <span>Objects</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-circle" style="border-color: #06b6d4; background: #0e7490;"></div>
+                <span>Parts</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-circle" style="border-color: #10b981; background: #047857;"></div>
+                <span>Materials</span>
+            </div>
+        </div>
+
+        <div class="debug-info" id="debugInfo"></div>
+        <div class="tooltip" id="tooltip"></div>
+        <svg id="scene-graph"></svg>
+    </div>
+
+    <script>
+        let sceneData = null;
+        let currentTransform = d3.zoomIdentity;
+        let isTreeLayout = false;
+        
+        // Sample data for testing
+        const sampleData = {
+            name: "Scene Root",
+            type: "root",
+            children: [
+                {
+                    name: "Object 1",
+                    type: "object",
+                    cost: 100.50,
+                    children: [
+                        {
+                            name: "Part A",
+                            type: "part",
+                            cost: 25.00,
+                            children: [
+                                { name: "Material 1", type: "material", cost: 10.00 },
+                                { name: "Material 2", type: "material", cost: 15.00 }
+                            ]
+                        },
+                        {
+                            name: "Part B",
+                            type: "part",
+                            cost: 75.50,
+                            children: [
+                                { name: "Material 3", type: "material", cost: 50.00 },
+                                { name: "Material 4", type: "material", cost: 25.50 }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    name: "Object 2",
+                    type: "object",
+                    cost: 200.00,
+                    children: [
+                        {
+                            name: "Part C",
+                            type: "part",
+                            cost: 200.00,
+                            children: [
+                                { name: "Material 5", type: "material", cost: 200.00 }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Listen for data from parent window
+        window.addEventListener('message', function(event) {
+            console.log('Received message:', event.data);
+            if (event.data && event.data.type === 'updateSceneGraph') {
+                sceneData = event.data.data;
+                console.log('Scene data received:', sceneData);
+                initializeGraph();
+            }
+        });
+
+        // Get actual dimensions
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        const svg = d3.select("#scene-graph")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("viewBox", `0 0 ${width} ${height}`)
+            .attr("preserveAspectRatio", "xMidYMid meet");
+
+        // Create container for zoomable content
+        const container = svg.append("g")
+            .attr("class", "graph-content");
+
+        // Setup zoom behavior
+        const zoom = d3.zoom()
+            .scaleExtent([0.1, 4])
+            .on("zoom", function(event) {
+                currentTransform = event.transform;
+                container.attr("transform", event.transform);
+                updateDebugInfo();
+            });
+
+        svg.call(zoom);
+
+        const simulation = d3.forceSimulation()
+            .force("link", d3.forceLink().id(d => d.id).distance(150).strength(1))
+            .force("charge", d3.forceManyBody().strength(-800).distanceMax(300))
+            .force("center", d3.forceCenter(width / 2, height / 2))
+            .force("collision", d3.forceCollide().radius(d => d.radius + 20).strength(1))
+            .force("x", d3.forceX(width / 2).strength(0.1))
+            .force("y", d3.forceY(height / 2).strength(0.1));
+
+        let root, nodes, links;
+
+        function initializeGraph() {
+            console.log('Initializing graph with data:', sceneData);
+            if (!sceneData) {
+                // Use sample data if no data provided
+                sceneData = sampleData;
+                console.log('Using sample data');
+            }
+            
+            container.selectAll("*").remove();
+            
+            root = d3.hierarchy(sceneData);
+            
+            nodes = root.descendants().map((d, i) => ({
+                ...d,
+                id: i,
+                x: width / 2 + (Math.random() - 0.5) * 400,
+                y: height / 2 + (Math.random() - 0.5) * 400,
+                radius: getNodeRadius(d)
+            }));
+
+            links = root.links();
+
+            console.log('Nodes:', nodes);
+            console.log('Links:', links);
+
+            updateGraph();
+            
+            // Auto-fit after initial render
+            setTimeout(() => fitToScreen(), 500);
+        }
+
+        function getNodeRadius(d) {
+            switch(d.data.type) {
+                case 'root': return 30;
+                case 'object': return 25;
+                case 'part': return 18;
+                case 'material': return 15;
+                default: return 12;
+            }
+        }
+
+        function updateGraph() {
+            // Create link elements
+            const link = container.selectAll(".link")
+                .data(links)
+                .enter().append("line")
+                .attr("class", "link");
+
+            // Create node groups
+            const node = container.selectAll(".node")
+                .data(nodes)
+                .enter().append("g")
+                .attr("class", d => `node ${d.data.type}-node`)
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            node.append("circle")
+                .attr("class", "node-circle")
+                .attr("r", d => d.radius);
+
+            node.append("text")
+                .attr("class", "node-text")
+                .text(d => d.data.name.length > 15 ? d.data.name.substring(0, 12) + "..." : d.data.name)
+                .style("font-size", d => Math.max(10, d.radius * 0.5) + "px");
+
+            // Add interactions
+            node
+                .on("mouseover", function(event, d) {
+                    showTooltip(event, d);
+                    d3.select(this).classed("pulse", true);
+                })
+                .on("mouseout", function(event, d) {
+                    hideTooltip();
+                    d3.select(this).classed("pulse", false);
+                })
+                .on("dblclick", function(event, d) {
+                    event.stopPropagation();
+                    centerNode(d);
+                });
+
+            simulation.nodes(nodes);
+            simulation.force("link").links(links);
+            simulation.alpha(1).restart();
+
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+
+                node.attr("transform", d => `translate(${d.x},${d.y})`);
+                
+                updateDebugInfo();
+            });
+        }
+
+        function showTooltip(event, d) {
+            const tooltip = document.getElementById('tooltip');
+            let content = `<strong>${d.data.name}</strong><br>Type: ${d.data.type}`;
+            
+            if (d.data.cost !== undefined) {
+                content += `<br>Cost: $${d.data.cost.toFixed(2)}`;
+            }
+            
+            content += `<br>Level: ${d.depth}`;
+            if (d.children) {
+                content += `<br>Children: ${d.children.length}`;
+            }
+            
+            tooltip.innerHTML = content;
+            tooltip.style.left = event.pageX + 10 + 'px';
+            tooltip.style.top = event.pageY + 10 + 'px';
+            tooltip.classList.add('show');
+        }
+
+        function hideTooltip() {
+            document.getElementById('tooltip').classList.remove('show');
+        }
+
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+        function resetView() {
+            svg.transition()
+                .duration(750)
+                .call(zoom.transform, d3.zoomIdentity);
+        }
+
+        function fitToScreen() {
+            if (!nodes || nodes.length === 0) return;
+
+            // Calculate bounds
+            const bounds = {
+                minX: d3.min(nodes, d => d.x - d.radius),
+                maxX: d3.max(nodes, d => d.x + d.radius),
+                minY: d3.min(nodes, d => d.y - d.radius),
+                maxY: d3.max(nodes, d => d.y + d.radius)
+            };
+
+            const graphWidth = bounds.maxX - bounds.minX;
+            const graphHeight = bounds.maxY - bounds.minY;
+            const graphCenterX = (bounds.minX + bounds.maxX) / 2;
+            const graphCenterY = (bounds.minY + bounds.maxY) / 2;
+
+            // Add padding
+            const padding = 100;
+            const availableWidth = width - padding * 2;
+            const availableHeight = height - padding * 2;
+
+            // Calculate scale to fit
+            let scale = Math.min(
+                availableWidth / graphWidth,
+                availableHeight / graphHeight
+            );
+            
+            // If nodes are too clustered (scale would be too high), limit it
+            scale = Math.min(scale, 2);
+            
+            // If nodes are too small, ensure minimum scale
+            scale = Math.max(scale, 0.5);
+
+            // Calculate translation to center
+            const tx = width / 2 - graphCenterX * scale;
+            const ty = height / 2 - graphCenterY * scale;
+
+            svg.transition()
+                .duration(750)
+                .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+        }
+
+        function centerNode(node) {
+            const scale = currentTransform.k;
+            const x = width / 2 - node.x * scale;
+            const y = height / 2 - node.y * scale;
+            
+            svg.transition()
+                .duration(750)
+                .call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
+        }
+
+        function toggleLayout() {
+            isTreeLayout = !isTreeLayout;
+            
+            if (isTreeLayout) {
+                // Switch to tree layout
+                const treeLayout = d3.tree().size([width - 200, height - 200]);
+                const treeRoot = treeLayout(root);
+                
+                treeRoot.descendants().forEach((n, i) => {
+                    if (nodes[i]) {
+                        nodes[i].fx = n.x + 100;
+                        nodes[i].fy = n.y + 100;
+                    }
+                });
+            } else {
+                // Switch to force layout
+                nodes.forEach(n => {
+                    n.fx = null;
+                    n.fy = null;
+                });
+            }
+            
+            simulation.alpha(1).restart();
+            setTimeout(() => fitToScreen(), 1000);
+        }
+
+        function expandAll() {
+            // Reset all node positions with better spread
+            const angleStep = (2 * Math.PI) / nodes.length;
+            const radius = Math.min(width, height) / 3;
+            
+            nodes.forEach((n, i) => {
+                n.fx = null;
+                n.fy = null;
+                // Position nodes in a circle initially
+                n.x = width / 2 + radius * Math.cos(i * angleStep);
+                n.y = height / 2 + radius * Math.sin(i * angleStep);
+            });
+            
+            simulation.alpha(1).restart();
+            
+            // Auto-fit after nodes settle
+            setTimeout(() => fitToScreen(), 2000);
+        }
+
+        function toggleDebug() {
+            const debugInfo = document.getElementById('debugInfo');
+            debugInfo.classList.toggle('show');
+        }
+
+        function updateDebugInfo() {
+            const debugInfo = document.getElementById('debugInfo');
+            if (!debugInfo.classList.contains('show')) return;
+            
+            const bounds = nodes && nodes.length > 0 ? {
+                minX: Math.round(d3.min(nodes, d => d.x)),
+                maxX: Math.round(d3.max(nodes, d => d.x)),
+                minY: Math.round(d3.min(nodes, d => d.y)),
+                maxY: Math.round(d3.max(nodes, d => d.y))
+            } : { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+            
+            debugInfo.innerHTML = `
+                Window: ${width} x ${height}<br>
+                Nodes: ${nodes ? nodes.length : 0}<br>
+                Links: ${links ? links.length : 0}<br>
+                Bounds: (${bounds.minX}, ${bounds.minY}) to (${bounds.maxX}, ${bounds.maxY})<br>
+                Transform: scale=${currentTransform.k.toFixed(2)}, x=${Math.round(currentTransform.x)}, y=${Math.round(currentTransform.y)}
+            `;
+        }
+
+        // Initialize with sample data if no data is sent
+        setTimeout(() => {
+            if (!sceneData) {
+                console.log('No data received, using sample data');
+                initializeGraph();
+            }
+        }, 1000); // Increased timeout to ensure parent can send data
+        
+        // Also listen for direct initialization call
+        window.initializeWithData = function(data) {
+            sceneData = data;
+            initializeGraph();
+        };
+        
+        // Debug: Log when the page loads
+        console.log('Scene graph iframe loaded and ready');
+        
+        // Manual load sample data function
+        function loadSampleData() {
+            console.log('Loading sample data manually');
+            sceneData = sampleData;
+            initializeGraph();
+        }
+
+        // Handle window resize
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                const newWidth = window.innerWidth;
+                const newHeight = window.innerHeight;
+                
+                svg.attr("width", newWidth)
+                   .attr("height", newHeight)
+                   .attr("viewBox", `0 0 ${newWidth} ${newHeight}`);
+                
+                simulation.force("center", d3.forceCenter(newWidth / 2, newHeight / 2));
+                simulation.alpha(0.3).restart();
+            }, 250);
+        });
+    </script>
+</body>
+</html>

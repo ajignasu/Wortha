@@ -3,3 +3,4 @@ venv/
 gemini_test.py
 __pycache__/
 *.pyc
+*.JPG

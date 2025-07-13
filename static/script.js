@@ -68,6 +68,49 @@ document.addEventListener('DOMContentLoaded', () => {
         analyzeBtn.disabled = false;
     }
 
+    // Helper functions defined before use
+    function buildSceneGraphData(bomData, objects) {
+        const sceneGraph = {
+            name: "Scene",
+            type: "root",
+            children: []
+        };
+        
+        const objectGroups = {};
+        bomData.forEach(item => {
+            if (!objectGroups[item.object]) {
+                objectGroups[item.object] = {
+                    name: item.object,
+                    type: "object",
+                    color: item.color,
+                    cost: 0,
+                    children: []
+                };
+            }
+            
+            let partNode = objectGroups[item.object].children.find(p => p.name === item.part);
+            if (!partNode) {
+                partNode = {
+                    name: item.part,
+                    type: "part",
+                    children: []
+                };
+                objectGroups[item.object].children.push(partNode);
+            }
+            
+            partNode.children.push({
+                name: item.material,
+                type: "material",
+                cost: item.cost
+            });
+            
+            objectGroups[item.object].cost += item.cost;
+        });
+        
+        sceneGraph.children = Object.values(objectGroups);
+        return sceneGraph;
+    }
+
     // Analyze button click handler
     analyzeBtn.addEventListener('click', async () => {
         if (!uploadedFile) {
@@ -226,7 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </tbody>
                     </table>
                     </div>
-                    <div class="instr-content" id="instr-${objectName.replace(/\s+/g,'-')}"><em>Click \"Manufacturing Instructions\" to load.</em></div>
+                    <div class="instr-content" id="instr-${objectName.replace(/\s+/g,'-')}" style="display:none;"><em>Click "Manufacturing Instructions" to load.</em></div>
                 </div>
             `;
         });
@@ -269,13 +312,17 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
 
+        // Build scene graph data
+        const sceneGraphData = buildSceneGraphData(bom, objects);
+
         // Build final results HTML with tabs
         resultsContainer.innerHTML = `
             <h2>Bill of Materials</h2>
             
             <div class="tab-navigation">
-                <button class="tab-button active" onclick="switchTab('per-object')">By Object</button>
-                <button class="tab-button" onclick="switchTab('full-scene')">Full Scene</button>
+                <button class="tab-button active" data-tab="per-object">By Object</button>
+                <button class="tab-button" data-tab="full-scene">Full Scene</button>
+                <button class="tab-button" data-tab="scene-graph">🌐 Scene Graph</button>
             </div>
             
             <div id="per-object" class="tab-content active">
@@ -286,6 +333,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${fullSceneHTML}
             </div>
             
+            <div id="scene-graph" class="tab-content">
+                <div class="scene-graph-viewer" style="height: 600px; border-radius: 12px; overflow: hidden; background: #0a0a0a; position: relative;">
+                    <!-- Iframe will be inserted here by JavaScript -->
+                </div>
+            </div>
+            
             <div class="total-section">
                 <span class="total-label">Total Estimated Cost</span>
                 <span class="total-amount">${total_cost.toFixed(2)}</span>
@@ -293,6 +346,31 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         resultsContainer.style.display = 'block';
+
+        // Create the iframe, attach the onload handler, and then set the src.
+        // This prevents a race condition where the iframe loads before the handler is attached.
+        const sceneGraphContainer = document.querySelector('#scene-graph .scene-graph-viewer');
+        if (sceneGraphContainer) {
+            const iframe = document.createElement('iframe');
+            iframe.id = 'scene-graph-frame';
+            iframe.style.width = '100%';
+            iframe.style.height = '600px';
+            iframe.style.border = 'none';
+            
+            iframe.onload = () => {
+                setTimeout(() => {
+                    if (iframe.contentWindow) {
+                        iframe.contentWindow.postMessage({
+                            type: 'updateSceneGraph',
+                            data: sceneGraphData
+                        }, '*');
+                    }
+                }, 100);
+            };
+            
+            iframe.src = '/static/scene-graph.html';
+            sceneGraphContainer.appendChild(iframe);
+        }
 
         // Attach tab handlers for each object
         document.querySelectorAll('.obj-tab.instr-tab').forEach(btn => {
@@ -309,8 +387,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 contentDiv.style.display = 'block';
                 // if already loaded, just show cached content
                 if (contentDiv.dataset.loaded) {
-                    priceDiv.style.display = 'none';
-                    contentDiv.style.display = 'block';
                     return;
                 }
                 contentDiv.innerHTML = '<em>Generating instructions...</em>';
@@ -322,7 +398,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     const data = await resp.json();
                     if (data.instructions) {
-                        // naive markdown to HTML: convert line breaks
                         contentDiv.innerHTML = marked.parse(data.instructions);
                         contentDiv.dataset.loaded = 'true';
                     } else {
@@ -336,84 +411,70 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Attach price tab handlers
-        // Delegated handler to cover dynamically modified DOM and ensure consistent switching
-        resultsContainer.addEventListener('click', e => {
-            const tabBtn = e.target.closest('.obj-tab');
-            if (!tabBtn) return;
-            const group = tabBtn.closest('.object-group');
-            if (!group) return;
-            const priceDiv = group.querySelector('.price-content');
-            const instrDiv = group.querySelector('.instr-content');
-            const isPrice = tabBtn.classList.contains('price-tab');
-            const priceBtn = group.querySelector('.price-tab');
-            const instrBtn = group.querySelector('.instr-tab');
-            if (isPrice) {
-                // activate price view
-                priceBtn.classList.add('active');
-                instrBtn.classList.remove('active');
-                priceDiv.style.display = 'block';
-                instrDiv.style.display = 'none';
-            } else {
-                // manufacturing instructions tab
-                instrBtn.classList.add('active');
-                priceBtn.classList.remove('active');
-                priceDiv.style.display = 'none';
-                instrDiv.style.display = 'block';
-                if (!instrDiv.dataset.loaded) {
-                    instrDiv.innerHTML = '<em>Generating instructions...</em>';
-                    const obj = objects.find(o => o.label === tabBtn.dataset.label);
-                    if (obj) {
-                        fetch('/api/instructions', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ label: obj.label, parts: obj.parts })
-                        }).then(r=>r.json()).then(data=>{
-                            if (data.instructions) {
-                                instrDiv.innerHTML = marked.parse(data.instructions);
-                            } else {
-                                instrDiv.textContent = data.detail || 'Failed to get instructions';
-                            }
-                            instrDiv.dataset.loaded = 'true';
-                        }).catch(err=>{
-                            instrDiv.textContent = err.message || 'Error generating instructions';
-                            instrDiv.dataset.loaded = 'true';
-                        });
-                    }
+    // Delegated handler for tab switching
+    resultsContainer.addEventListener('click', e => {
+        const tabBtn = e.target.closest('.obj-tab');
+        if (!tabBtn) return;
+        const group = tabBtn.closest('.object-group');
+        if (!group) return;
+        const priceDiv = group.querySelector('.price-content');
+        const instrDiv = group.querySelector('.instr-content');
+        const isPrice = tabBtn.classList.contains('price-tab');
+        const priceBtn = group.querySelector('.price-tab');
+        const instrBtn = group.querySelector('.instr-tab');
+        
+        if (isPrice) {
+            // activate price view
+            priceBtn.classList.add('active');
+            instrBtn.classList.remove('active');
+            priceDiv.style.display = 'block';
+            instrDiv.style.display = 'none';
+        } else {
+            // manufacturing instructions tab
+            instrBtn.classList.add('active');
+            priceBtn.classList.remove('active');
+            priceDiv.style.display = 'none';
+            instrDiv.style.display = 'block';
+            
+            if (!instrDiv.dataset.loaded) {
+                instrDiv.innerHTML = '<em>Generating instructions...</em>';
+                const obj = objects.find(o => o.label === tabBtn.dataset.label);
+                if (obj) {
+                    fetch('/api/instructions', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ label: obj.label, parts: obj.parts })
+                    }).then(r=>r.json()).then(data=>{
+                        if (data.instructions) {
+                            instrDiv.innerHTML = marked.parse(data.instructions);
+                        } else {
+                            instrDiv.textContent = data.detail || 'Failed to get instructions';
+                        }
+                        instrDiv.dataset.loaded = 'true';
+                    }).catch(err=>{
+                        instrDiv.textContent = err.message || 'Error generating instructions';
+                        instrDiv.dataset.loaded = 'true';
+                    });
                 }
             }
-        });
+        }
+    });
 
-        // Legacy individual listeners (kept for safety but can be removed later)
-        document.querySelectorAll('.obj-tab.price-tab').forEach(btn=>{
-            btn.addEventListener('click',()=>{
-                const group = btn.closest('.object-group');
-                const priceDiv = group.querySelector('.price-content');
-                const instrDiv = group.querySelector('.instr-content');
-                const instrTab = group.querySelector('.instr-tab');
-                btn.classList.add('active');
-                if (instrTab) instrTab.classList.remove('active');
-                priceDiv.style.display = 'block';
-                instrDiv.style.display = 'none';
-            });
-        });
-
-        // Tab switching function
-    window.switchTab = function(tabName) {
-        // Update tab buttons
-        document.querySelectorAll('.tab-button').forEach(btn => {
-            btn.classList.remove('active');
-            if (btn.textContent.includes(tabName === 'per-object' ? 'By Object' : 'Full Scene')) {
-                btn.classList.add('active');
-            }
-        });
-        
-        // Update tab content
-        document.querySelectorAll('.tab-content').forEach(content => {
-            content.classList.remove('active');
-        });
-        document.getElementById(tabName).classList.add('active');
-    };
+    // Delegated handler for main tab switching
+    resultsContainer.addEventListener('click', e => {
+        const tabButton = e.target.closest('.tab-button');
+        if (tabButton && !tabButton.classList.contains('obj-tab')) {
+            const tabName = tabButton.dataset.tab;
+            
+            // Deactivate all main tabs
+            resultsContainer.querySelectorAll('.tab-navigation .tab-button').forEach(btn => btn.classList.remove('active'));
+            resultsContainer.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            // Activate the selected tab
+            tabButton.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
+    });
 
     // Helper to overlay SVG bounding boxes and attach click events
     function addBoundingBoxes(imgEl, objects) {
