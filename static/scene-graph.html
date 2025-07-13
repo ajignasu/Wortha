@@ -348,12 +348,10 @@
         svg.call(zoom);
 
         const simulation = d3.forceSimulation()
+            .alphaDecay(0.05) // cool quickly so motion stops fast
             .force("link", d3.forceLink().id(d => d.id).distance(150).strength(1))
             .force("charge", d3.forceManyBody().strength(-800).distanceMax(300))
-            .force("center", d3.forceCenter(width / 2, height / 2))
-            .force("collision", d3.forceCollide().radius(d => d.radius + 20).strength(1))
-            .force("x", d3.forceX(width / 2).strength(0.1))
-            .force("y", d3.forceY(height / 2).strength(0.1));
+            .force("collision", d3.forceCollide().radius(d => d.radius + 20).strength(1));
 
         let root, nodes, links;
 
@@ -373,8 +371,8 @@
             nodes.forEach((d, i) => {
                 d.id = i;
                 d.radius = getNodeRadius(d);
-                d.x = width / 2 + (Math.random() - 0.5) * 400;
-                d.y = height / 2 + (Math.random() - 0.5) * 400;
+                d.x = width / 2;
+                d.y = height / 2;
             });
 
             links = root.links();
@@ -383,9 +381,12 @@
             console.log('Links:', links);
 
             updateGraph();
+
+            // Precompute layout and stop simulation to avoid initial drift
+            for (let i = 0; i < 300; ++i) simulation.tick();
+            simulation.stop();
             
-            // Auto-fit after initial render
-            setTimeout(() => fitToScreen(), 500);
+            
         }
 
         function getNodeRadius(d) {
